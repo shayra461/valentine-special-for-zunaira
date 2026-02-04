@@ -13,7 +13,18 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        romantic: ['Dancing Script', 'cursive'],
+        body: ['Quicksand', 'sans-serif'],
+      },
       colors: {
+        romantic: {
+          pink: "hsl(var(--romantic-pink))",
+          blush: "hsl(var(--romantic-blush))",
+          rose: "hsl(var(--romantic-rose))",
+          soft: "hsl(var(--romantic-soft))",
+          deep: "hsl(var(--romantic-deep))",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
