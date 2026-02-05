@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRef } from 'react';
 import FloatingHearts from './FloatingHearts';
 import Confetti from './Confetti';
+import NameReveal from './NameReveal';
 
 type Scene = 'intro' | 'question' | 'celebration';
 
@@ -42,12 +43,14 @@ const ValentinePage = ({ name }: ValentinePageProps) => {
   const [yesButtonEnlarged, setYesButtonEnlarged] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [moveSpeed, setMoveSpeed] = useState(1);
+  const [noButtonWiggle, setNoButtonWiggle] = useState(false);
+  const [celebrationStep, setCelebrationStep] = useState(0);
   
   const noButtonRef = useRef<HTMLDivElement>(null);
   const yesButtonRef = useRef<HTMLButtonElement>(null);
   const lastMoveTime = useRef<number>(0);
 
-  const displayName = name || 'you';
+  const displayName = name || 'Zunaira';
 
   const getYesButtonRect = useCallback(() => {
     if (yesButtonRef.current) {
@@ -99,6 +102,11 @@ const ValentinePage = ({ name }: ValentinePageProps) => {
     } while (attempts < maxPositionAttempts);
     
     setNoButtonPosition({ x: newX, y: newY });
+    
+    // Trigger wiggle animation
+    setNoButtonWiggle(true);
+    setTimeout(() => setNoButtonWiggle(false), 400);
+    
     setNoAttempts(prev => {
       const newCount = prev + 1;
       // Increase speed slightly with each attempt
@@ -188,6 +196,23 @@ const ValentinePage = ({ name }: ValentinePageProps) => {
       }, 2000);
     }
   }, [noAttempts, showSoftMessage]);
+
+  // Celebration sequence timing
+  useEffect(() => {
+    if (scene === 'celebration') {
+      // Step 1: Show "I knew it" immediately
+      setCelebrationStep(1);
+      
+      // Step 2: Show "Because my Valentine..." after 1.5s
+      setTimeout(() => setCelebrationStep(2), 1500);
+      
+      // Step 3: Show name reveal after 3s
+      setTimeout(() => setCelebrationStep(3), 3000);
+      
+      // Step 4: Show final message after 5s
+      setTimeout(() => setCelebrationStep(4), 5500);
+    }
+  }, [scene]);
 
   const handleIntroClick = () => {
     setIsTransitioning(true);
@@ -291,7 +316,7 @@ const ValentinePage = ({ name }: ValentinePageProps) => {
           {showQuestion && noButtonVisible && (
             <div
               ref={noButtonRef}
-              className="fixed z-20 select-none"
+              className={`fixed z-20 select-none ${noButtonWiggle ? 'animate-wiggle-move' : ''}`}
               style={{
                 left: noButtonPosition.x,
                 top: noButtonPosition.y,
@@ -301,18 +326,22 @@ const ValentinePage = ({ name }: ValentinePageProps) => {
             >
               <div className="flex flex-col items-center">
                 {noAttempts > 0 && (
-                  <p className="text-sm md:text-base text-romantic-deep mb-2 animate-wiggle font-body whitespace-nowrap">
+                  <p className="text-sm md:text-base text-white mb-2 font-body whitespace-nowrap drop-shadow-md">
                     {currentMessage}
                   </p>
                 )}
                 <div
                   onClick={handleNoClick}
                   onTouchStart={handleNoClick}
-                  className="px-6 py-3 bg-secondary text-secondary-foreground font-body font-medium text-sm md:text-base rounded-full border-2 border-border select-none cursor-not-allowed"
+                  className="px-6 py-3 font-body font-semibold text-sm md:text-base rounded-full border-2 select-none cursor-not-allowed shadow-lg"
                   style={{
                     pointerEvents: 'none', // Completely disable interactions
                     userSelect: 'none',
                     touchAction: 'none',
+                    background: 'linear-gradient(135deg, hsl(10, 80%, 65%) 0%, hsl(350, 75%, 60%) 100%)',
+                    borderColor: 'hsl(350, 70%, 55%)',
+                    color: 'white',
+                    textShadow: '0 1px 2px rgba(0,0,0,0.2)',
                   }}
                   tabIndex={-1}
                   aria-hidden="true"
@@ -335,25 +364,43 @@ const ValentinePage = ({ name }: ValentinePageProps) => {
             }`}
           >
             <div className="text-center animate-scale-in">
-              <div className="text-6xl md:text-8xl mb-8 animate-bounce-soft">
+              <div className="text-6xl md:text-8xl mb-6 animate-bounce-soft">
                 💖
               </div>
               
-              <h1 className="font-romantic text-4xl md:text-6xl lg:text-7xl text-romantic-deep leading-relaxed">
-                I knew it 😌❤️
-              </h1>
+              {/* Step 1: I knew it */}
+              {celebrationStep >= 1 && (
+                <h1 className="font-romantic text-4xl md:text-6xl lg:text-7xl text-romantic-deep leading-relaxed animate-typewriter">
+                  I knew it 😌❤️
+                </h1>
+              )}
               
-              <p className="font-romantic text-2xl md:text-4xl text-romantic mt-6 animate-fade-in opacity-0 delay-500">
-                Thank you for choosing me…
-              </p>
+              {/* Step 2: Because my Valentine... */}
+              {celebrationStep >= 2 && (
+                <p className="font-romantic text-2xl md:text-4xl text-romantic mt-6 animate-typewriter">
+                  Because my Valentine was always you…
+                </p>
+              )}
               
-              <h2 className="font-romantic text-3xl md:text-5xl lg:text-6xl text-romantic-deep mt-10 animate-fade-in opacity-0 delay-1000">
-                Happy Valentine's Day 💐
-              </h2>
+              {/* Step 3: Name reveal */}
+              {celebrationStep >= 3 && (
+                <div className="mt-8">
+                  <NameReveal name={displayName} />
+                </div>
+              )}
               
-              <p className="font-body text-lg md:text-xl text-muted-foreground mt-12 animate-fade-in opacity-0 delay-1500 italic">
-                Forever yours.
-              </p>
+              {/* Step 4: Final message */}
+              {celebrationStep >= 4 && (
+                <div className="mt-8 animate-typewriter">
+                  <h2 className="font-romantic text-3xl md:text-5xl lg:text-6xl text-romantic-deep">
+                    Happy Valentine's Day, {displayName} 💐
+                  </h2>
+                  
+                  <p className="font-body text-lg md:text-xl text-muted-foreground mt-8 italic">
+                    Forever yours.
+                  </p>
+                </div>
+              )}
             </div>
             
             {/* Extra floating hearts for celebration */}
