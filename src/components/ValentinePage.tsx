@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useRef } from 'react';
 import FloatingHearts from './FloatingHearts';
 import Confetti from './Confetti';
 
@@ -12,7 +13,19 @@ const playfulMessages = [
   "Nope, try again 💅",
   "You can't escape 🥺",
   "Just say yes! 💕",
+  "Not gonna happen 🙃",
+  "Keep trying 😂",
+  "I'm faster! 💨",
+  "Almost got me 😏",
+  "Too slow! 🐢",
+  "Never! 💪",
+  "Ha! Missed! 😜",
 ];
+
+const ESCAPE_RADIUS = 150; // pixels - detect mouse from this distance
+const MIN_ATTEMPTS_BEFORE_FADE = 20;
+const EDGE_PADDING = 100; // avoid screen edges
+const YES_BUTTON_SAFE_ZONE = 200; // don't overlap YES button
 
 interface ValentinePageProps {
   name?: string;
@@ -28,22 +41,146 @@ const ValentinePage = ({ name }: ValentinePageProps) => {
   const [noButtonVisible, setNoButtonVisible] = useState(true);
   const [yesButtonEnlarged, setYesButtonEnlarged] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [moveSpeed, setMoveSpeed] = useState(1);
+  
+  const noButtonRef = useRef<HTMLDivElement>(null);
+  const yesButtonRef = useRef<HTMLButtonElement>(null);
+  const lastMoveTime = useRef<number>(0);
 
   const displayName = name || 'you';
 
-  const moveNoButton = useCallback(() => {
-    const maxX = window.innerWidth - 120;
-    const maxY = window.innerHeight - 60;
-    const newX = Math.random() * maxX;
-    const newY = Math.random() * maxY;
-    
-    setNoButtonPosition({ x: newX, y: newY });
-    setNoAttempts(prev => prev + 1);
-    setCurrentMessage(playfulMessages[Math.floor(Math.random() * playfulMessages.length)]);
+  const getYesButtonRect = useCallback(() => {
+    if (yesButtonRef.current) {
+      return yesButtonRef.current.getBoundingClientRect();
+    }
+    return null;
   }, []);
 
+  const moveNoButton = useCallback(() => {
+    const now = Date.now();
+    // Throttle to prevent too rapid movements (min 50ms between moves)
+    if (now - lastMoveTime.current < 50) return;
+    lastMoveTime.current = now;
+
+    const buttonWidth = 100;
+    const buttonHeight = 50;
+    
+    // Calculate safe boundaries
+    const minX = EDGE_PADDING;
+    const maxX = window.innerWidth - buttonWidth - EDGE_PADDING;
+    const minY = EDGE_PADDING;
+    const maxY = window.innerHeight - buttonHeight - EDGE_PADDING;
+    
+    const yesRect = getYesButtonRect();
+    
+    let newX: number;
+    let newY: number;
+    let attempts = 0;
+    const maxPositionAttempts = 20;
+    
+    // Find a position that doesn't overlap with YES button
+    do {
+      newX = minX + Math.random() * (maxX - minX);
+      newY = minY + Math.random() * (maxY - minY);
+      attempts++;
+      
+      if (!yesRect) break;
+      
+      // Check if too close to YES button
+      const centerX = newX + buttonWidth / 2;
+      const centerY = newY + buttonHeight / 2;
+      const yesCenterX = yesRect.left + yesRect.width / 2;
+      const yesCenterY = yesRect.top + yesRect.height / 2;
+      const distance = Math.sqrt(
+        Math.pow(centerX - yesCenterX, 2) + Math.pow(centerY - yesCenterY, 2)
+      );
+      
+      if (distance > YES_BUTTON_SAFE_ZONE) break;
+    } while (attempts < maxPositionAttempts);
+    
+    setNoButtonPosition({ x: newX, y: newY });
+    setNoAttempts(prev => {
+      const newCount = prev + 1;
+      // Increase speed slightly with each attempt
+      setMoveSpeed(1 + newCount * 0.05);
+      return newCount;
+    });
+    setCurrentMessage(playfulMessages[Math.floor(Math.random() * playfulMessages.length)]);
+  }, [getYesButtonRect]);
+
+  // Global mouse move detection for desktop
   useEffect(() => {
-    if (noAttempts >= 4 && !showSoftMessage) {
+    if (scene !== 'question' || !showQuestion || !noButtonVisible || showSoftMessage) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!noButtonRef.current) return;
+      
+      const rect = noButtonRef.current.getBoundingClientRect();
+      const buttonCenterX = rect.left + rect.width / 2;
+      const buttonCenterY = rect.top + rect.height / 2;
+      
+      const distance = Math.sqrt(
+        Math.pow(e.clientX - buttonCenterX, 2) + 
+        Math.pow(e.clientY - buttonCenterY, 2)
+      );
+      
+      // Move button when cursor gets within escape radius
+      if (distance < ESCAPE_RADIUS) {
+        moveNoButton();
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, [scene, showQuestion, noButtonVisible, showSoftMessage, moveNoButton]);
+
+  // Touch detection for mobile
+  useEffect(() => {
+    if (scene !== 'question' || !showQuestion || !noButtonVisible || showSoftMessage) return;
+
+    const handleTouch = (e: TouchEvent) => {
+      if (!noButtonRef.current) return;
+      
+      const touch = e.touches[0] || e.changedTouches[0];
+      if (!touch) return;
+      
+      const rect = noButtonRef.current.getBoundingClientRect();
+      const buttonCenterX = rect.left + rect.width / 2;
+      const buttonCenterY = rect.top + rect.height / 2;
+      
+      const distance = Math.sqrt(
+        Math.pow(touch.clientX - buttonCenterX, 2) + 
+        Math.pow(touch.clientY - buttonCenterY, 2)
+      );
+      
+      // Move button when touch gets within escape radius
+      if (distance < ESCAPE_RADIUS * 1.5) { // Larger radius for touch
+        e.preventDefault();
+        moveNoButton();
+      }
+    };
+
+    window.addEventListener('touchstart', handleTouch, { passive: false });
+    window.addEventListener('touchmove', handleTouch, { passive: false });
+    
+    return () => {
+      window.removeEventListener('touchstart', handleTouch);
+      window.removeEventListener('touchmove', handleTouch);
+    };
+  }, [scene, showQuestion, noButtonVisible, showSoftMessage, moveNoButton]);
+
+  // Initialize NO button position when question appears
+  useEffect(() => {
+    if (showQuestion && noButtonVisible) {
+      // Start in a random position away from center
+      const startX = window.innerWidth * 0.6 + Math.random() * (window.innerWidth * 0.2);
+      const startY = window.innerHeight * 0.6 + Math.random() * (window.innerHeight * 0.2);
+      setNoButtonPosition({ x: startX, y: startY });
+    }
+  }, [showQuestion, noButtonVisible]);
+
+  useEffect(() => {
+    if (noAttempts >= MIN_ATTEMPTS_BEFORE_FADE && !showSoftMessage) {
       setShowSoftMessage(true);
       setTimeout(() => {
         setNoButtonVisible(false);
@@ -69,17 +206,11 @@ const ValentinePage = ({ name }: ValentinePageProps) => {
     }, 500);
   };
 
-  const handleNoHover = () => {
-    if (!showSoftMessage) {
-      moveNoButton();
-    }
-  };
-
-  const handleNoTouch = (e: React.TouchEvent) => {
+  // Fail-safe: if somehow clicked, move immediately and ignore
+  const handleNoClick = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
-    if (!showSoftMessage) {
-      moveNoButton();
-    }
+    e.stopPropagation();
+    moveNoButton();
   };
 
   return (
@@ -143,6 +274,7 @@ const ValentinePage = ({ name }: ValentinePageProps) => {
                 {/* Buttons container */}
                 <div className="mt-10 flex flex-col md:flex-row items-center justify-center gap-6">
                   <button
+                    ref={yesButtonRef}
                     onClick={handleYesClick}
                     className={`px-12 py-5 bg-button-gradient text-primary-foreground font-body font-bold text-xl md:text-2xl rounded-full shadow-button animate-pulse-glow transition-all duration-500 hover:scale-110 ${
                       yesButtonEnlarged ? 'scale-110 px-16 py-6 text-2xl md:text-3xl' : ''
@@ -158,11 +290,13 @@ const ValentinePage = ({ name }: ValentinePageProps) => {
           {/* Floating NO button */}
           {showQuestion && noButtonVisible && (
             <div
-              className="fixed z-20"
+              ref={noButtonRef}
+              className="fixed z-20 select-none"
               style={{
-                left: noButtonPosition.x || '60%',
-                top: noButtonPosition.y || '70%',
-                transform: noButtonPosition.x ? 'none' : 'translate(-50%, -50%)',
+                left: noButtonPosition.x,
+                top: noButtonPosition.y,
+                transition: `all ${0.15 / moveSpeed}s ease-out`,
+                willChange: 'left, top',
               }}
             >
               <div className="flex flex-col items-center">
@@ -171,13 +305,20 @@ const ValentinePage = ({ name }: ValentinePageProps) => {
                     {currentMessage}
                   </p>
                 )}
-                <button
-                  onMouseEnter={handleNoHover}
-                  onTouchStart={handleNoTouch}
-                  className="px-6 py-3 bg-secondary text-secondary-foreground font-body font-medium text-sm md:text-base rounded-full border-2 border-border hover:bg-muted transition-all duration-200"
+                <div
+                  onClick={handleNoClick}
+                  onTouchStart={handleNoClick}
+                  className="px-6 py-3 bg-secondary text-secondary-foreground font-body font-medium text-sm md:text-base rounded-full border-2 border-border select-none cursor-not-allowed"
+                  style={{
+                    pointerEvents: 'none', // Completely disable interactions
+                    userSelect: 'none',
+                    touchAction: 'none',
+                  }}
+                  tabIndex={-1}
+                  aria-hidden="true"
                 >
                   No 😅
-                </button>
+                </div>
               </div>
             </div>
           )}
